@@ -1,6 +1,6 @@
 # Strange
 
-Strange is a native macOS window manager. Version **0.4.0** calculates display zones and moves the active window using global shortcuts and public macOS APIs. It requires macOS 13 or later and Swift 6.2 or later. A lightweight AppKit menu-bar app keeps shortcuts active without taking focus from the target window.
+Strange is a native macOS window manager. Version **0.4.1** calculates display zones and moves the active window using global shortcuts and public macOS APIs. It requires macOS 13 or later and Swift 6.2 or later. A lightweight AppKit menu-bar app keeps shortcuts active without taking focus from the target window.
 
 ## Shortcuts
 
@@ -67,6 +67,17 @@ Start the menu-bar app and leave it running:
 swift run strange-app
 ```
 
+To build a local app bundle with a Finder/application icon:
+
+```sh
+bash Scripts/build-app.sh
+open .build/Strange.app
+```
+
+The script builds the optimized executable, renders every standard ICNS size from the same vector used at runtime, writes the bundle metadata, and ad-hoc signs `.build/Strange.app` for local use. Quit any running Strange instance before launching the bundle. Grant Accessibility access to this app if macOS asks. The bundle is a local development build; distribution signing and notarization are separate release steps.
+
+The menu-bar and application icons share a circle divided into nine sections by two vertical and two horizontal straight lines. The menu-bar image is an 18-point template that macOS tints for the current appearance. The app icon has a dark circular fill with light strokes and transparency outside the circle. `Sources/StrangeApp/StrangeIcon.swift` is the canonical vector source. Generated previews and the iconset are under `.build/icons`, and the Finder icon is stored inside the app bundle. No images or drawing callbacks capture application state.
+
 Click the Strange icon in the menu bar and choose **Enable Accessibility Access…**, grant permission in System Settings, and return to the window you want to position. Press any registered shortcut. The menu shows permission, registration, and placement status without displaying application names or window content. Quit through the menu when finished. Launch one instance at a time; a second instance will report shortcut registration conflicts.
 
 For a short registration smoke check that releases every shortcut immediately:
@@ -120,6 +131,6 @@ For manual validation, grant Accessibility access and try whole, thirds, quadran
 
 The implementation requests only Accessibility access. It reads process identifiers and window geometry temporarily, without reading window titles or document content. It has no network calls, telemetry, persistent window cache, or credentials. AX and CF resources are ARC-managed locals; operations and retry tasks are bounded, and the actor releases its busy state with `defer` on every exit. Hotkey registrations are released on failure, explicit stop, owner deinitialization, and app termination. The app cancels its queue worker at shutdown; queue and hotkey callbacks use weak ownership to avoid retain cycles. The burst target is released when the queue drains or cancels. A regression test verifies queue deallocation while an operation is suspended. Runtime Instruments leak profiling against a signed application remains a release check.
 
-`VERSION` records the semantic version; 0.4.0 adds the native menu-bar app with whole-mode display navigation. New features and breaking API changes before 1.0 increment the minor version; compatible fixes increment the patch version. Keep both executable versions in sync with `VERSION`.
+`VERSION` records the semantic version; 0.4.1 updates the menu-bar/application icon and packages it in a local app bundle. New features and breaking API changes before 1.0 increment the minor version; compatible fixes increment the patch version. Keep both executable versions in sync with `VERSION`.
 
 API references: [NSScreen.visibleFrame](https://developer.apple.com/documentation/appkit/nsscreen/visibleframe), [AXUIElement](https://developer.apple.com/documentation/applicationservices/axuielement), and [AXUIElementSetMessagingTimeout](https://developer.apple.com/documentation/applicationservices/1459345-axuielementsetmessagingtimeout).

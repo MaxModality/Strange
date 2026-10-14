@@ -5,10 +5,22 @@ import StrangeMac
 @main @MainActor struct StrangeApp {
     static func main() {
         if CommandLine.arguments.dropFirst() == ["--version"] {
-            print("0.4.0")
+            print("0.4.1")
+            return
+        }
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments.count == 2, arguments[0] == "--export-icons" {
+            do {
+                try StrangeIcon.export(to: URL(fileURLWithPath: arguments[1], isDirectory: true))
+                print("Strange icon images exported.")
+            } catch {
+                print("Icon export failed.")
+                exit(1)
+            }
             return
         }
         let application = NSApplication.shared
+        application.applicationIconImage = StrangeIcon.image(style: .application)
         application.setActivationPolicy(.accessory)
         if CommandLine.arguments.dropFirst() == ["--check-shortcuts"] {
             let keys = GlobalHotKeys { _ in }
@@ -64,11 +76,11 @@ import StrangeMac
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "rectangle.split.2x2", accessibilityDescription: "Strange window manager")
+        item.button?.image = StrangeIcon.image(style: .menuBar)
         item.button?.toolTip = "Strange"
         let menu = NSMenu()
         menu.delegate = self
-        menu.addItem(NSMenuItem(title: "Strange 0.4.0", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Strange 0.4.1", action: nil, keyEquivalent: ""))
         menu.addItem(status)
         menu.addItem(.separator())
         let permission = menu.addItem(withTitle: "Enable Accessibility Access…", action: #selector(requestPermission), keyEquivalent: "")
