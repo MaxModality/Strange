@@ -7,12 +7,14 @@ let package = Package(
     products: [
         .library(name: "StrangeCore", targets: ["StrangeCore"]),
         .library(name: "StrangeMac", targets: ["StrangeMac"]),
-        .executable(name: "strange", targets: ["strange"])
+        .executable(name: "strange", targets: ["strange"]),
+        .executable(name: "strange-app", targets: ["StrangeApp"])
     ],
     targets: [
         .target(name: "StrangeCore"),
         .target(name: "StrangeMac", dependencies: ["StrangeCore"]),
         .executableTarget(name: "strange", dependencies: ["StrangeMac", "StrangeCore"]),
+        .executableTarget(name: "StrangeApp", dependencies: ["StrangeMac", "StrangeCore"]),
         .testTarget(name: "StrangeCoreTests", dependencies: ["StrangeCore"]),
         .testTarget(name: "StrangeMacTests", dependencies: ["StrangeMac", "StrangeCore"])
     ]
