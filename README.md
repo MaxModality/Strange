@@ -1,6 +1,6 @@
 # Strange
 
-Strange is a native macOS window manager. Version **0.4.2** calculates display zones and moves the active window using global shortcuts and public macOS APIs. It requires macOS 13 or later and Swift 6.2 or later. A lightweight AppKit menu-bar app keeps shortcuts active without taking focus from the target window.
+Strange is a native macOS window manager. Version **0.4.3** calculates display zones and moves the active window using global shortcuts and public macOS APIs. It requires macOS 13 or later and Swift 6.2 or later. A lightweight AppKit menu-bar app keeps shortcuts active without taking focus from the target window.
 
 ## Shortcuts
 
@@ -13,7 +13,7 @@ Strange is a native macOS window manager. Version **0.4.2** calculates display z
 | Control + Option + Command | `u i o m , .` | Top-left, top-center, top-right, bottom-left, bottom-center, bottom-right sixths |
 | Control + Option + Command | ← / → | Previous / next display, filling its whole usable area |
 
-Display movement orders screens by their left edge, then top-to-bottom for vertically aligned screens, with system order breaking identical-position ties. It wraps at both ends. A single display keeps the window there and applies whole mode. Each move uses the window's current display (largest intersection), so two quick Right presses advance twice. The destination's own dimensions, scale, menu bar, and hidden-Dock correction determine its whole frame; landscape and portrait displays can be mixed.
+Display movement orders screens by their left edge, then top-to-bottom for vertically aligned screens, with system order breaking identical-position ties. It wraps at both ends. A single display keeps the window there and applies whole mode. Each move uses the window's current display (largest intersection), so two quick Right presses advance twice. Transfers first shrink dimensions that would overflow the destination, move the window to its origin, then request its whole size there; this prevents source-display size limits from leaving unused space on a taller or wider destination. The destination's own dimensions, scale, menu bar, and hidden-Dock correction determine its whole frame; landscape and portrait displays can be mixed.
 
 No Shift modifier is used. The comma and period keys mean `,` and `.`, not `<` and `>`. Bindings use physical ANSI key positions, so positions remain consistent when the keyboard layout changes. Return/Enter means the main Return key. The additional Command modifier selects sixths; `Control + Option + Command + J/K/L` has no binding.
 
@@ -135,6 +135,6 @@ For manual validation, grant Accessibility access and try whole, thirds, quadran
 
 The implementation requests only Accessibility access. It reads process identifiers and window geometry temporarily, without reading window titles or document content. It has no network calls, telemetry, persistent window cache, or credentials. AX and CF resources are ARC-managed locals; operations and retry tasks are bounded, and the actor releases its busy state with `defer` on every exit. Hotkey registrations are released on failure, explicit stop, owner deinitialization, and app termination. The app cancels its queue worker at shutdown; queue and hotkey callbacks use weak ownership to avoid retain cycles. The burst target is released when the queue drains or cancels. A regression test verifies queue deallocation while an operation is suspended. Runtime Instruments leak profiling against a signed application remains a release check.
 
-`VERSION` records the semantic version; 0.4.2 fixes minimum-size clipping with accepted-size anchors and bounded resize settlement. New features and breaking API changes before 1.0 increment the minor version; compatible fixes increment the patch version. Keep both executable versions in sync with `VERSION`.
+`VERSION` records the semantic version; 0.4.3 fixes display-transfer ordering so resizing happens on the destination screen, using its corrected available space. Version 0.4.2 added minimum-size anchors and bounded resize settlement. New features and breaking API changes before 1.0 increment the minor version; compatible fixes increment the patch version. Keep both executable versions in sync with `VERSION`.
 
 API references: [NSScreen.visibleFrame](https://developer.apple.com/documentation/appkit/nsscreen/visibleframe), [AXUIElement](https://developer.apple.com/documentation/applicationservices/axuielement), and [AXUIElementSetMessagingTimeout](https://developer.apple.com/documentation/applicationservices/1459345-axuielementsetmessagingtimeout).

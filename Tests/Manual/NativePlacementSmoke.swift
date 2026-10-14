@@ -165,10 +165,14 @@ import StrangeMac
                 let result = try await manager.performWindowCommand(target, command: .moveDisplay(direction))
                 let actualIndex = try DisplayGeometry.index(containing: result.actualFrame, in: frames)
                 guard actualIndex == expected else { throw SmokeFailure.frameMismatch }
-                // Whole placement must span this display's available width;
-                // menu bar / visible Dock may reduce its usable dimensions.
-                guard result.requestedFrame.width > frames[expected].width / 2,
-                      result.requestedFrame.height > frames[expected].height / 2 else { throw SmokeFailure.frameMismatch }
+                // Verify the full corrected destination frame on the first
+                // transfer command, not merely that it reached the right screen.
+                let ideal = result.idealFrame
+                let tolerance = 1 / NSScreen.screens[expected].backingScaleFactor
+                guard abs(result.actualFrame.minX - ideal.minX) <= tolerance,
+                      abs(result.actualFrame.minY - ideal.minY) <= tolerance,
+                      abs(result.actualFrame.width - ideal.width) <= tolerance,
+                      abs(result.actualFrame.height - ideal.height) <= tolerance else { throw SmokeFailure.frameMismatch }
                 current = result.actualFrame
                 print("display \(direction) -> display[\(expected)]: whole verified, \(current)")
             }

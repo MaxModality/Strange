@@ -6,7 +6,7 @@ import StrangeMac
     static func main() async {
         let arguments = Array(CommandLine.arguments.dropFirst())
         if arguments == ["--version"] {
-            print("0.4.2")
+            print("0.4.3")
         } else if arguments == ["--request-permission"] {
             let trusted = WindowManager.requestAccessibilityPermission()
             print(trusted ? "Accessibility access is enabled." : "Enable Accessibility access in System Settings, then run again.")
@@ -20,7 +20,7 @@ import StrangeMac
                 Foundation.exit(1)
             }
         } else {
-            print("Strange 0.4.2\nUsage: strange move <zone> | --request-permission | --version\nZones:")
+            print("Strange 0.4.3\nUsage: strange move <zone> | --request-permission | --version\nZones:")
             for zone in WindowZone.allCases { print("  \(zone.rawValue)") }
         }
     }
