@@ -10,6 +10,7 @@ public enum PlacementError: Error, Equatable, Sendable {
     case busy
     case accessibility(Int32)
     case frameNotAccepted
+    case windowLargerThanDisplay
 }
 
 /// Short, bounded backoff only for transient Accessibility transport failures.
@@ -35,5 +36,30 @@ enum FrameVerification {
         && abs(actual.minY - requested.minY) <= tolerance
         && abs(actual.width - requested.width) <= tolerance
         && abs(actual.height - requested.height) <= tolerance
+    }
+}
+
+/// Distinguish an in-flight resize from the size the app actually accepts.
+/// Poll only a mismatch, with bounded waits; never pause an immediate match.
+enum SizeSettlement {
+    static func read(requested: CGSize, tolerance: CGFloat, isolation: isolated (any Actor)? = #isolation,
+                     readFrame: () async throws -> CGRect,
+                     wait: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) async throws -> (frame: CGRect, isStable: Bool) {
+        try Task.checkCancellation()
+        var previous = try await readFrame()
+        for milliseconds in [16, 32] {
+            if matches(previous.size, requested, tolerance: tolerance) { return (previous, true) }
+            try await wait(.milliseconds(milliseconds))
+            try Task.checkCancellation()
+            let next = try await readFrame()
+            if matches(next.size, previous.size, tolerance: tolerance) { return (next, true) }
+            previous = next
+        }
+        return (previous, matches(previous.size, requested, tolerance: tolerance))
+    }
+
+    private static func matches(_ lhs: CGSize, _ rhs: CGSize, tolerance: CGFloat) -> Bool {
+        lhs.width.isFinite && lhs.height.isFinite && lhs.width > 0 && lhs.height > 0
+        && abs(lhs.width - rhs.width) <= tolerance && abs(lhs.height - rhs.height) <= tolerance
     }
 }

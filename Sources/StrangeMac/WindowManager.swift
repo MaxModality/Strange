@@ -42,8 +42,12 @@ private struct DockConfiguration: Sendable {
 }
 
 public struct PlacementResult: Sendable {
+    /// The ratio-based zone before accounting for application size constraints.
+    public let idealFrame: CGRect
+    /// The effective, anchored frame that was verified against the application.
     public let requestedFrame: CGRect
     public let actualFrame: CGRect
+    public let isSizeConstrained: Bool
 }
 
 private struct DisplaySnapshot: Sendable {
@@ -159,27 +163,66 @@ public actor WindowManager {
         let target = try ZoneGeometry.frame(for: zone, in: display.availableFrame, scale: display.scale)
         let tolerance = 1 / display.scale
 
-        // AX has no atomic frame setter. Reapply size/position to accommodate apps
-        // that clamp the initial position using the old window size.
+        // AX has no atomic frame setter. Read the size the app actually accepts
+        // before positioning, so a refused resize cannot push the window offscreen.
         var current = original
+        var constraintCandidate: CGSize?
         for attempt in 0..<3 {
             try Task.checkCancellation()
+            var sizeWasVerified = false
+            if let candidate = constraintCandidate {
+                let settled = try await AccessibilityRetry.call(isolation: self) { try self.frame(window) }
+                let anchored = try AnchoredPlacement.frame(for: zone, acceptedSize: settled.size,
+                                                           in: display.availableFrame, scale: display.scale)
+                if abs(settled.width - candidate.width) <= tolerance,
+                   abs(settled.height - candidate.height) <= tolerance,
+                   settled.width >= target.width - tolerance, settled.height >= target.height - tolerance,
+                   FrameVerification.matches(settled, anchored, tolerance: tolerance) {
+                    try await AccessibilityRetry.call(isolation: self) {
+                        try await self.ensureFocus(application, window: window, processID: desktop.processID)
+                    }
+                    return try placementResult(ideal: target, effective: anchored, actual: settled,
+                                               available: display.availableFrame, tolerance: tolerance)
+                }
+                current = settled
+                constraintCandidate = nil
+            }
             if abs(current.width - target.width) > tolerance || abs(current.height - target.height) > tolerance {
                 try await AccessibilityRetry.call(isolation: self) {
                     try await self.ensureFocus(application, window: window, processID: desktop.processID)
                     try Task.checkCancellation()
                     try self.set(window, attribute: kAXSizeAttribute, size: target.size)
                 }
+                let settled = try await settleSize(window, requested: target.size, tolerance: tolerance)
+                current = settled.frame
+                sizeWasVerified = settled.isStable
             }
+            let anchored = try AnchoredPlacement.frame(for: zone, acceptedSize: current.size,
+                                                       in: display.availableFrame, scale: display.scale)
             try await AccessibilityRetry.call(isolation: self) {
                 try await self.ensureFocus(application, window: window, processID: desktop.processID)
                 try Task.checkCancellation()
-                try self.set(window, attribute: kAXPositionAttribute, point: target.origin)
+                try self.set(window, attribute: kAXPositionAttribute, point: anchored.origin)
             }
             let actual = try await AccessibilityRetry.call(isolation: self) { try self.frame(window) }
             current = actual
             if FrameVerification.matches(actual, target, tolerance: tolerance) {
-                return PlacementResult(requestedFrame: target, actualFrame: actual)
+                return try placementResult(ideal: target, effective: target, actual: actual,
+                                           available: display.availableFrame, tolerance: tolerance)
+            }
+            let actualAnchor = try AnchoredPlacement.frame(for: zone, acceptedSize: actual.size,
+                                                           in: display.availableFrame, scale: display.scale)
+            if actual.width >= target.width - tolerance, actual.height >= target.height - tolerance,
+               FrameVerification.matches(actual, actualAnchor, tolerance: tolerance) {
+                if sizeWasVerified, abs(actual.width - anchored.width) <= tolerance,
+                   abs(actual.height - anchored.height) <= tolerance {
+                    return try placementResult(ideal: target, effective: actualAnchor, actual: actual,
+                                               available: display.availableFrame, tolerance: tolerance)
+                }
+                // One stable read after settling distinguishes an app-constrained
+                // size from a resize that has not finished yet. Never accept an
+                // undersized source-display clamp during a cross-display move.
+                constraintCandidate = actual.size
             }
             if attempt < 2 {
                 // No sleep on a successful normal placement. Only an observed
@@ -188,6 +231,22 @@ public actor WindowManager {
             }
         }
         throw PlacementError.frameNotAccepted
+    }
+
+    private func settleSize(_ window: AXHandle, requested: CGSize, tolerance: CGFloat) async throws -> (frame: CGRect, isStable: Bool) {
+        try await SizeSettlement.read(requested: requested, tolerance: tolerance, isolation: self, readFrame: {
+            try await AccessibilityRetry.call(isolation: self) { try self.frame(window) }
+        })
+    }
+
+    private func placementResult(ideal: CGRect, effective: CGRect, actual: CGRect,
+                                 available: CGRect, tolerance: CGFloat) throws -> PlacementResult {
+        guard actual.width <= available.width + tolerance, actual.height <= available.height + tolerance else {
+            throw PlacementError.windowLargerThanDisplay
+        }
+        return PlacementResult(idealFrame: ideal, requestedFrame: effective, actualFrame: actual,
+                               isSizeConstrained: abs(actual.width - ideal.width) > tolerance
+                                  || abs(actual.height - ideal.height) > tolerance)
     }
 
     private func ensureFocus(_ application: AXHandle, window: AXHandle, processID: pid_t) async throws {

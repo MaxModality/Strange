@@ -10,14 +10,14 @@ import StrangeMac
         let arguments = Array(CommandLine.arguments.dropFirst())
         let app = NSApplication.shared
         let delegate: NSObject & NSApplicationDelegate
-        if arguments == ["--fixture"] {
+        if arguments == ["--fixture"] || arguments == ["--fixture-constrained"] {
             app.setActivationPolicy(.regular)
-            delegate = FixtureDelegate()
-        } else if arguments.count == 2, arguments[0] == "--controller", let processID = Int32(arguments[1]) {
-            app.setActivationPolicy(.accessory)
-            delegate = ControllerDelegate(processID: processID)
+            delegate = FixtureDelegate(constrained: arguments == ["--fixture-constrained"])
+        } else if arguments.count == 2, ["--controller", "--controller-constrained"].contains(arguments[0]), let processID = Int32(arguments[1]) {
+            app.setActivationPolicy(.prohibited)
+            delegate = ControllerDelegate(processID: processID, constrained: arguments[0] == "--controller-constrained")
         } else {
-            print("Usage: smoke --fixture | --controller <fixture-pid>")
+            print("Usage: smoke --fixture[-constrained] | --controller[-constrained] <fixture-pid>")
             exit(64)
         }
         app.delegate = delegate
@@ -30,17 +30,29 @@ import StrangeMac
     private let previousApp = NSWorkspace.shared.frontmostApplication
     private var quitSignal: DispatchSourceSignal?
     private var timeout: Timer?
+    private let constrained: Bool
+    init(constrained: Bool) { self.constrained = constrained }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard let screen = NSScreen.screens.first else { exit(1) }
-        let initial = CGRect(x: screen.frame.midX - 300, y: screen.frame.midY - 200, width: 600, height: 400)
+        let screen = constrained ? NSScreen.screens.first { $0.frame.height > $0.frame.width } : NSScreen.screens.first
+        guard let screen else { exit(1) }
+        let minimum = constrained
+            ? CGSize(width: floor(screen.visibleFrame.width * 2 / 3), height: floor(screen.visibleFrame.height * 2 / 3))
+            : CGSize(width: 100, height: 100)
+        let size = constrained ? minimum : CGSize(width: 600, height: 400)
+        let initial = CGRect(x: screen.frame.midX - size.width / 2, y: screen.frame.midY - size.height / 2,
+                             width: size.width, height: size.height)
         let window = NSWindow(contentRect: initial, styleMask: [.titled, .closable, .resizable],
                               backing: .buffered, defer: false)
         window.title = "Synthetic window placement check"
-        window.minSize = CGSize(width: 100, height: 100)
+        window.minSize = minimum
         window.isReleasedWhenClosed = false
         self.window = window
         window.makeKeyAndOrderFront(nil)
+        if constrained { window.setFrame(initial, display: true) }
+        print("synthetic fixture frame: \(window.frame), minimum: \(window.minSize)")
+        print("fixture process ID: \(getpid())")
+        fflush(stdout)
         NSApplication.shared.activate(ignoringOtherApps: true)
         signal(SIGUSR1, SIG_IGN)
         let source = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
@@ -67,15 +79,27 @@ import StrangeMac
 @MainActor private final class ControllerDelegate: NSObject, NSApplicationDelegate {
     private let processID: pid_t
     private var queue: PlacementQueue?
-    init(processID: pid_t) { self.processID = processID }
+    private let constrained: Bool
+    init(processID: pid_t, constrained: Bool) {
+        self.processID = processID
+        self.constrained = constrained
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task {
             do {
                 // Activation settling belongs to the fixture, never normal placement.
-                try await Task.sleep(for: .milliseconds(300))
+                for _ in 0..<20 {
+                    if NSWorkspace.shared.frontmostApplication?.processIdentifier == processID { break }
+                    try await Task.sleep(for: .milliseconds(100))
+                }
                 let manager = WindowManager()
                 let target = try await manager.captureActiveWindow(expectedProcessID: processID)
+                if constrained {
+                    try await verifyConstrainedPlacement(manager: manager, target: target)
+                    print("PASS: minimum-size portrait placements stay visible and honor their anchors.")
+                    exit(0)
+                }
                 for zone in WindowZone.allCases {
                     let start = ContinuousClock.now
                     let result = try await manager.moveWindow(target, to: zone)
@@ -148,6 +172,44 @@ import StrangeMac
                 current = result.actualFrame
                 print("display \(direction) -> display[\(expected)]: whole verified, \(current)")
             }
+        }
+    }
+
+    private func verifyConstrainedPlacement(manager: WindowManager, target: WindowTarget) async throws {
+        print("checking constrained whole placement")
+        let whole = try await manager.moveWindow(target, to: .whole)
+        let available = whole.idealFrame
+        guard let primary = NSScreen.screens.first else { throw PlacementError.noDisplay }
+        let screens = NSScreen.screens
+        let frames = try screens.map {
+            try CoordinateSpace.accessibilityFrame(fromAppKit: $0.frame, primaryDisplayFrame: primary.frame)
+        }
+        guard let index = try DisplayGeometry.index(containing: available, in: frames) else { throw PlacementError.noDisplay }
+        let tolerance = 1 / screens[index].backingScaleFactor
+        for zone in WindowZone.allCases where zone != .whole {
+            print("checking constrained \(zone.rawValue)")
+            let result = try await manager.moveWindow(target, to: zone)
+            let actual = result.actualFrame
+            guard result.isSizeConstrained, available.insetBy(dx: -tolerance, dy: -tolerance).contains(actual) else {
+                throw SmokeFailure.frameMismatch
+            }
+            switch zone {
+            case .leftHalf, .leftThird, .topLeftQuadrant, .bottomLeftQuadrant, .topLeftSixth, .bottomLeftSixth:
+                guard abs(actual.minX - available.minX) <= tolerance else { throw SmokeFailure.frameMismatch }
+            case .rightHalf, .rightThird, .topRightQuadrant, .bottomRightQuadrant, .topRightSixth, .bottomRightSixth:
+                guard abs(actual.maxX - available.maxX) <= tolerance else { throw SmokeFailure.frameMismatch }
+            default:
+                guard abs(actual.midX - available.midX) <= tolerance else { throw SmokeFailure.frameMismatch }
+            }
+            switch zone {
+            case .topHalf, .topLeftQuadrant, .topRightQuadrant, .topLeftSixth, .topCenterSixth, .topRightSixth:
+                guard abs(actual.minY - available.minY) <= tolerance else { throw SmokeFailure.frameMismatch }
+            case .bottomHalf, .bottomLeftQuadrant, .bottomRightQuadrant, .bottomLeftSixth, .bottomCenterSixth, .bottomRightSixth:
+                guard abs(actual.maxY - available.maxY) <= tolerance else { throw SmokeFailure.frameMismatch }
+            default:
+                guard abs(actual.midY - available.midY) <= tolerance else { throw SmokeFailure.frameMismatch }
+            }
+            print("constrained \(zone.rawValue): visible and anchored, \(actual)")
         }
     }
 }

@@ -5,7 +5,7 @@ import StrangeMac
 @main @MainActor struct StrangeApp {
     static func main() {
         if CommandLine.arguments.dropFirst() == ["--version"] {
-            print("0.4.1")
+            print("0.4.2")
             return
         }
         let arguments = Array(CommandLine.arguments.dropFirst())
@@ -61,9 +61,9 @@ import StrangeMac
             try Task.checkCancellation()
             guard let target = self?.activeTarget else { throw CancellationError() }
             guard target.processID == processID else { throw PlacementError.focusChanged }
-            _ = try await manager.performWindowCommand(target, command: command)
-        }, onCommandSuccess: { [weak self] _ in
-            self?.placementMessage = "Window placed."
+            let result = try await manager.performWindowCommand(target, command: command)
+            try Task.checkCancellation()
+            self?.placementMessage = result.isSizeConstrained ? "Window placed at its supported size." : "Window placed."
         }, onFailure: { [weak self] error in
             self?.placementMessage = Self.message(for: error)
             if error is PlacementQueueError { self?.queueFailure = Self.message(for: error) }
@@ -80,7 +80,7 @@ import StrangeMac
         item.button?.toolTip = "Strange"
         let menu = NSMenu()
         menu.delegate = self
-        menu.addItem(NSMenuItem(title: "Strange 0.4.1", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Strange 0.4.2", action: nil, keyEquivalent: ""))
         menu.addItem(status)
         menu.addItem(.separator())
         let permission = menu.addItem(withTitle: "Enable Accessibility Access…", action: #selector(requestPermission), keyEquivalent: "")
@@ -143,6 +143,7 @@ import StrangeMac
         case .accessibilityPermissionRequired: "Enable Accessibility access to move windows."
         case .focusChanged: "Focus changed; placement stopped."
         case .frameNotAccepted: "The app could not fit its window into this zone."
+        case .windowLargerThanDisplay: "The window's minimum size exceeds this display."
         case .unsupportedWindow: "This window cannot be moved or resized."
         case .noActiveWindow: "No active window is available."
         case .noDisplay: "No display is available."
