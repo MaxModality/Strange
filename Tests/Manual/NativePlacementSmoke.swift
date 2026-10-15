@@ -37,7 +37,7 @@ import StrangeMac
         let screen = constrained ? NSScreen.screens.first { $0.frame.height > $0.frame.width } : NSScreen.screens.first
         guard let screen else { exit(1) }
         let minimum = constrained
-            ? CGSize(width: floor(screen.visibleFrame.width * 2 / 3), height: floor(screen.visibleFrame.height * 2 / 3))
+            ? CGSize(width: floor(screen.visibleFrame.width * 3 / 4), height: floor(screen.visibleFrame.height * 2 / 3))
             : CGSize(width: 100, height: 100)
         let size = constrained ? minimum : CGSize(width: 600, height: 400)
         let initial = CGRect(x: screen.frame.midX - size.width / 2, y: screen.frame.midY - size.height / 2,
@@ -112,14 +112,42 @@ import StrangeMac
                           abs(actual.height - requested.height) <= tolerance else { throw SmokeFailure.frameMismatch }
                     print("\(zone.rawValue): \(result.actualFrame), verified in \(start.duration(to: .now))")
                 }
+                try await verifyQuadrantReset(manager: manager, target: target)
                 try await verifyRapidThirds(manager: manager, target: target)
                 try await verifyDisplayTransfers(manager: manager, target: target)
-                print("PASS: all 18 zones, a queued j/k/l burst, and whole-window display transfers using only the synthetic window.")
+                print("PASS: all 20 zones, quadrant resets after shrinking, a queued j/k/l burst, and whole-window display transfers using only the synthetic window.")
                 exit(0)
             } catch {
                 print("FAIL: \(error)")
                 exit(1)
             }
+        }
+    }
+
+    private func verifyQuadrantReset(manager: WindowManager, target: WindowTarget) async throws {
+        for zone: WindowZone in [.topLeftQuadrant, .topRightQuadrant, .bottomLeftQuadrant, .bottomRightQuadrant] {
+            let initial = try await manager.moveWindow(target, to: zone)
+            let grown = try await manager.performWindowCommand(target, command: .resize(.grow))
+            guard grown.actualFrame.width > initial.actualFrame.width + 1,
+                  grown.actualFrame.height > initial.actualFrame.height + 1 else { throw SmokeFailure.frameMismatch }
+            _ = try await manager.moveWindow(target, to: zone)
+            var shrunken = initial.actualFrame
+            for _ in 0..<2 {
+                shrunken = try await manager.performWindowCommand(target, command: .resize(.shrink)).actualFrame
+            }
+            guard shrunken.width < initial.actualFrame.width - 1,
+                  shrunken.height < initial.actualFrame.height - 1 else { throw SmokeFailure.frameMismatch }
+            let regrown = try await manager.performWindowCommand(target, command: .resize(.grow))
+            guard regrown.actualFrame.width > shrunken.width + 1,
+                  regrown.actualFrame.height > shrunken.height + 1 else { throw SmokeFailure.frameMismatch }
+            let restored = try await manager.moveWindow(target, to: zone)
+            let actual = restored.actualFrame
+            let expected = initial.idealFrame
+            guard abs(actual.minX - expected.minX) <= 1, abs(actual.minY - expected.minY) <= 1,
+                  abs(actual.width - expected.width) <= 1, abs(actual.height - expected.height) <= 1 else {
+                throw SmokeFailure.frameMismatch
+            }
+            print("quadrant reset \(zone.rawValue): grow, shrink, regrow, and reset verified")
         }
     }
 
@@ -198,9 +226,9 @@ import StrangeMac
                 throw SmokeFailure.frameMismatch
             }
             switch zone {
-            case .leftHalf, .leftThird, .topLeftQuadrant, .bottomLeftQuadrant, .topLeftSixth, .bottomLeftSixth:
+            case .leftHalf, .leftThird, .leftTwoThirds, .topLeftQuadrant, .bottomLeftQuadrant, .topLeftSixth, .bottomLeftSixth:
                 guard abs(actual.minX - available.minX) <= tolerance else { throw SmokeFailure.frameMismatch }
-            case .rightHalf, .rightThird, .topRightQuadrant, .bottomRightQuadrant, .topRightSixth, .bottomRightSixth:
+            case .rightHalf, .rightThird, .rightTwoThirds, .topRightQuadrant, .bottomRightQuadrant, .topRightSixth, .bottomRightSixth:
                 guard abs(actual.maxX - available.maxX) <= tolerance else { throw SmokeFailure.frameMismatch }
             default:
                 guard abs(actual.midX - available.midX) <= tolerance else { throw SmokeFailure.frameMismatch }

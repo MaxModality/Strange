@@ -190,26 +190,24 @@ public actor WindowManager {
                                        available: display.availableFrame, tolerance: tolerance)
         }
 
-        // AX has no atomic frame setter. Read the size the app actually accepts
-        // before positioning, so a refused resize cannot push the window offscreen.
-        var current = original
-        if index != sourceIndex {
-            current = try await DisplayTransfer.prepare(source: original, destination: target, tolerance: tolerance, isolation: self, move: { point in
-                try await AccessibilityRetry.call(isolation: self) {
-                    try await self.ensureFocus(application, window: window, processID: desktop.processID)
-                    try Task.checkCancellation()
-                    try self.set(window, attribute: kAXPositionAttribute, point: point)
-                }
-            }, resize: { size in
-                try await AccessibilityRetry.call(isolation: self) {
-                    try await self.ensureFocus(application, window: window, processID: desktop.processID)
-                    try Task.checkCancellation()
-                    try self.set(window, attribute: kAXSizeAttribute, size: size)
-                }
-            }, readFrame: {
-                try await AccessibilityRetry.call(isolation: self) { try self.frame(window) }
-            })
-        }
+        // AX has no atomic frame setter. Prepare room for growth, then
+        // anchor the accepted size so a refused resize stays contained when possible.
+        var current = try await FrameTransition.prepare(source: original, destination: target, tolerance: tolerance,
+                                                       changesDisplay: index != sourceIndex, isolation: self, move: { point in
+            try await AccessibilityRetry.call(isolation: self) {
+                try await self.ensureFocus(application, window: window, processID: desktop.processID)
+                try Task.checkCancellation()
+                try self.set(window, attribute: kAXPositionAttribute, point: point)
+            }
+        }, resize: { size in
+            try await AccessibilityRetry.call(isolation: self) {
+                try await self.ensureFocus(application, window: window, processID: desktop.processID)
+                try Task.checkCancellation()
+                try self.set(window, attribute: kAXSizeAttribute, size: size)
+            }
+        }, readFrame: {
+            try await AccessibilityRetry.call(isolation: self) { try self.frame(window) }
+        })
         var constraintCandidate: CGSize?
         for attempt in 0..<3 {
             try Task.checkCancellation()

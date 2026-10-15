@@ -39,16 +39,19 @@ enum FrameVerification {
     }
 }
 
-/// Establish the destination screen before requesting its size. Otherwise the
-/// source screen can clamp a tall portrait frame or a wide landscape frame.
-enum DisplayTransfer {
-    static func prepare(source: CGRect, destination: CGRect, tolerance: CGFloat,
+/// Establish the target origin before growing. A shrunken right/bottom window
+/// can otherwise be clamped to the space remaining at its current origin.
+/// Display transfers also shrink overflowing dimensions before relocation.
+enum FrameTransition {
+    static func prepare(source: CGRect, destination: CGRect, tolerance: CGFloat, changesDisplay: Bool = true,
                         isolation: isolated (any Actor)? = #isolation,
                         move: (CGPoint) async throws -> Void,
                         resize: (CGSize) async throws -> Void,
                         readFrame: () async throws -> CGRect,
                         wait: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) async throws -> CGRect {
         try Task.checkCancellation()
+        guard changesDisplay || destination.width > source.width + tolerance
+                || destination.height > source.height + tolerance else { return source }
         // A very wide source window can still belong mostly to the source
         // after moving its origin onto a skinny neighboring screen. Shrink
         // overflowing dimensions first so relocation establishes screen ownership.
@@ -63,7 +66,7 @@ enum DisplayTransfer {
         try await move(destination.origin)
         try Task.checkCancellation()
         // Always resize after relocation, even if the original size matched:
-        // moving between screens can itself adjust the window's dimensions.
+        // moving a window can itself adjust its dimensions.
         try await resize(destination.size)
         return try await SizeSettlement.read(requested: destination.size, tolerance: tolerance,
                                              isolation: isolation, readFrame: readFrame, wait: wait).frame
