@@ -8,10 +8,13 @@ public enum DisplayDirection: Sendable, Equatable {
 public enum WindowCommand: Sendable, Equatable {
     case zone(WindowZone)
     case moveDisplay(DisplayDirection)
+    case resize(ResizeDirection)
 
     public var label: String {
         switch self {
         case .zone(let zone): zone.rawValue
+        case .resize(.shrink): "Shrink free edges"
+        case .resize(.grow): "Grow free edges"
         case .moveDisplay(.left): "Previous display (whole)"
         case .moveDisplay(.right): "Next display (whole)"
         }

@@ -42,7 +42,7 @@ private struct DockConfiguration: Sendable {
 }
 
 public struct PlacementResult: Sendable {
-    /// The ratio-based zone before accounting for application size constraints.
+    /// The ideal zone or resize frame before application size constraints.
     public let idealFrame: CGRect
     /// The effective, anchored frame that was verified against the application.
     public let requestedFrame: CGRect
@@ -147,8 +147,11 @@ public actor WindowManager {
             throw PlacementError.noDisplay
         }
         let index: Int
-        let zone: WindowZone
+        let zone: WindowZone?
         switch command {
+        case .resize:
+            index = sourceIndex
+            zone = nil
         case .zone(let requestedZone):
             index = sourceIndex
             zone = requestedZone
@@ -160,8 +163,32 @@ public actor WindowManager {
             zone = .whole
         }
         let display = desktop.displays[index]
-        let target = try ZoneGeometry.frame(for: zone, in: display.availableFrame, scale: display.scale)
+        let resize: EdgeResize?
+        if case .resize(let direction) = command {
+            resize = try EdgeResize(original: original, direction: direction,
+                                    in: display.availableFrame, scale: display.scale)
+        } else {
+            resize = nil
+        }
+        let target: CGRect
+        if let resize { target = resize.idealFrame }
+        else if let zone { target = try ZoneGeometry.frame(for: zone, in: display.availableFrame, scale: display.scale) }
+        else { throw PlacementError.unsupportedWindow }
+        func anchoredFrame(_ size: CGSize) throws -> CGRect {
+            if let resize { return try resize.frame(acceptedSize: size) }
+            guard let zone else { throw PlacementError.unsupportedWindow }
+            return try AnchoredPlacement.frame(for: zone, acceptedSize: size,
+                                               in: display.availableFrame, scale: display.scale)
+        }
         let tolerance = 1 / display.scale
+        if resize != nil, target == original {
+            try Task.checkCancellation()
+            try await AccessibilityRetry.call(isolation: self) {
+                try await self.ensureFocus(application, window: window, processID: desktop.processID)
+            }
+            return try placementResult(ideal: target, effective: target, actual: original,
+                                       available: display.availableFrame, tolerance: tolerance)
+        }
 
         // AX has no atomic frame setter. Read the size the app actually accepts
         // before positioning, so a refused resize cannot push the window offscreen.
@@ -189,11 +216,10 @@ public actor WindowManager {
             var sizeWasVerified = false
             if let candidate = constraintCandidate {
                 let settled = try await AccessibilityRetry.call(isolation: self) { try self.frame(window) }
-                let anchored = try AnchoredPlacement.frame(for: zone, acceptedSize: settled.size,
-                                                           in: display.availableFrame, scale: display.scale)
+                let anchored = try anchoredFrame(settled.size)
                 if abs(settled.width - candidate.width) <= tolerance,
                    abs(settled.height - candidate.height) <= tolerance,
-                   settled.width >= target.width - tolerance, settled.height >= target.height - tolerance,
+                   (resize != nil || (settled.width >= target.width - tolerance && settled.height >= target.height - tolerance)),
                    FrameVerification.matches(settled, anchored, tolerance: tolerance) {
                     try await AccessibilityRetry.call(isolation: self) {
                         try await self.ensureFocus(application, window: window, processID: desktop.processID)
@@ -214,8 +240,7 @@ public actor WindowManager {
                 current = settled.frame
                 sizeWasVerified = settled.isStable
             }
-            let anchored = try AnchoredPlacement.frame(for: zone, acceptedSize: current.size,
-                                                       in: display.availableFrame, scale: display.scale)
+            let anchored = try anchoredFrame(current.size)
             try await AccessibilityRetry.call(isolation: self) {
                 try await self.ensureFocus(application, window: window, processID: desktop.processID)
                 try Task.checkCancellation()
@@ -227,9 +252,8 @@ public actor WindowManager {
                 return try placementResult(ideal: target, effective: target, actual: actual,
                                            available: display.availableFrame, tolerance: tolerance)
             }
-            let actualAnchor = try AnchoredPlacement.frame(for: zone, acceptedSize: actual.size,
-                                                           in: display.availableFrame, scale: display.scale)
-            if actual.width >= target.width - tolerance, actual.height >= target.height - tolerance,
+            let actualAnchor = try anchoredFrame(actual.size)
+            if (resize != nil || (actual.width >= target.width - tolerance && actual.height >= target.height - tolerance)),
                FrameVerification.matches(actual, actualAnchor, tolerance: tolerance) {
                 if sizeWasVerified, abs(actual.width - anchored.width) <= tolerance,
                    abs(actual.height - anchored.height) <= tolerance {
@@ -237,7 +261,8 @@ public actor WindowManager {
                                                available: display.availableFrame, tolerance: tolerance)
                 }
                 // One stable read after settling distinguishes an app-constrained
-                // size from a resize that has not finished yet. Never accept an
+                // size from a resize that has not finished yet. Relative resizes
+                // also accept app maximum sizes. Never accept an
                 // undersized source-display clamp during a cross-display move.
                 constraintCandidate = actual.size
             }

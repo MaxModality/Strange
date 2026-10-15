@@ -79,7 +79,8 @@ final class PlacementQueueTests: XCTestCase {
             gate.succeed(.whole)
         }, onFailure: { gate.fail($0) })
         let expected: [WindowCommand] = [
-            .zone(.leftThird), .moveDisplay(.right), .moveDisplay(.right), .zone(.centerThird)
+            .zone(.leftThird), .moveDisplay(.right), .moveDisplay(.right),
+            .resize(.grow), .resize(.grow), .resize(.shrink), .zone(.centerThird)
         ]
         for command in expected { queue.enqueue(command: command, processID: 1) }
         for count in 1...expected.count {

@@ -34,13 +34,23 @@ final class HotKeyTests: XCTestCase {
 
     func testEveryZoneHasOneUniqueUnshiftedShortcut() {
         let bindings = HotKeyBinding.defaults
-        XCTAssertEqual(bindings.count, 20)
+        XCTAssertEqual(bindings.count, 22)
         XCTAssertEqual(bindings.compactMap(\.zone).count, 18)
         XCTAssertEqual(Set(bindings.compactMap(\.zone)), Set(WindowZone.allCases))
         XCTAssertEqual(Set(bindings.map { "\($0.keyCode):\($0.modifiers)" }).count, bindings.count)
         for binding in bindings {
             XCTAssertEqual(binding.modifiers & UInt32(shiftKey), 0, binding.label)
             XCTAssertFalse(binding.label.isEmpty)
+        }
+    }
+
+    func testResizeShortcutsUseUnshiftedMinusAndEqual() {
+        let modifiers = UInt32(controlKey | optionKey)
+        for (key, direction) in [(kVK_ANSI_Minus, ResizeDirection.shrink), (kVK_ANSI_Equal, .grow)] {
+            let matches = HotKeyBinding.defaults.filter { $0.keyCode == UInt32(key) }
+            XCTAssertEqual(matches.count, 1)
+            XCTAssertEqual(matches.first?.modifiers, modifiers)
+            XCTAssertEqual(matches.first?.command, .resize(direction))
         }
     }
 
@@ -61,7 +71,10 @@ final class HotKeyTests: XCTestCase {
 
     func testCommandArrowsMoveDisplaysWithoutChangingBaselineHalves() {
         let modifiers = UInt32(controlKey | optionKey | cmdKey)
-        let displayBindings = HotKeyBinding.defaults.filter { $0.zone == nil }
+        let displayBindings = HotKeyBinding.defaults.filter {
+            if case .moveDisplay = $0.command { return true }
+            return false
+        }
         XCTAssertEqual(displayBindings.count, 2)
         XCTAssertEqual(displayBindings.first { $0.keyCode == UInt32(kVK_LeftArrow) }?.command, .moveDisplay(.left))
         XCTAssertEqual(displayBindings.first { $0.keyCode == UInt32(kVK_RightArrow) }?.command, .moveDisplay(.right))

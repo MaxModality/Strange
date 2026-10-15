@@ -56,8 +56,8 @@ public enum PlacementQueueError: Error, Equatable, Sendable {
 
     public func enqueue(command: WindowCommand, processID: pid_t) {
         let request = Request(command: command, processID: processID)
-        // Zone repeats have one destination. Display moves are relative, so
-        // every press must advance again, including consecutive equal commands.
+        // Zone repeats have one destination. Display moves and resizes are
+        // relative, so every press must execute, including consecutive repeats.
         if case .zone = command, request == (pending.last ?? inFlight) { return }
         guard pending.count < 32 else {
             onFailure?(PlacementQueueError.queueFull)
