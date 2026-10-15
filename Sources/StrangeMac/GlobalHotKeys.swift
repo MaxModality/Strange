@@ -13,7 +13,7 @@ public enum HotKeyError: Error, Equatable {
     private var handler: EventHandlerRef?
     private var registrations: [EventHotKeyRef] = []
     private let onPress: @MainActor (WindowCommand) -> Void
-    private static let signature: OSType = 0x53545247 // STRG
+    private static let signature: OSType = 0x53545247 // STRG (Strange)
 
     public init(onPress: @escaping @MainActor (WindowCommand) -> Void) {
         self.onPress = onPress

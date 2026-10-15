@@ -1,3 +1,6 @@
 .build/
 .swiftpm/
 .DS_Store
+
+# Local public signing selector; private keys remain in the macOS keychain.
+.strange-signing-identity
