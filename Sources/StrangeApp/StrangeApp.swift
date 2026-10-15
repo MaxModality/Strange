@@ -5,7 +5,7 @@ import StrangeMac
 @main @MainActor struct StrangeApp {
     static func main() {
         if CommandLine.arguments.dropFirst() == ["--version"] {
-            print("0.4.3")
+            print("0.5.0")
             return
         }
         let arguments = Array(CommandLine.arguments.dropFirst())
@@ -80,7 +80,7 @@ import StrangeMac
         item.button?.toolTip = "Strange"
         let menu = NSMenu()
         menu.delegate = self
-        menu.addItem(NSMenuItem(title: "Strange 0.4.3", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Strange 0.5.0", action: nil, keyEquivalent: ""))
         menu.addItem(status)
         menu.addItem(.separator())
         let permission = menu.addItem(withTitle: "Enable Accessibility Access…", action: #selector(requestPermission), keyEquivalent: "")
