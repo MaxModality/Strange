@@ -28,7 +28,7 @@ public struct HotKeyBinding: Equatable, Sendable {
 
     public static let defaults: [HotKeyBinding] = {
         let baseline = UInt32(controlKey | optionKey)
-        let sixths = baseline | UInt32(cmdKey)
+        let commandModifiers = baseline | UInt32(cmdKey)
         return [
             Self(keyCode: UInt32(kVK_ANSI_Minus), modifiers: baseline, command: .resize(.shrink), label: "⌃⌥ -"),
             Self(keyCode: UInt32(kVK_ANSI_Equal), modifiers: baseline, command: .resize(.grow), label: "⌃⌥ ="),
@@ -40,18 +40,20 @@ public struct HotKeyBinding: Equatable, Sendable {
             Self(keyCode: UInt32(kVK_ANSI_J), modifiers: baseline, zone: .leftThird, label: "⌃⌥ J"),
             Self(keyCode: UInt32(kVK_ANSI_K), modifiers: baseline, zone: .centerThird, label: "⌃⌥ K"),
             Self(keyCode: UInt32(kVK_ANSI_L), modifiers: baseline, zone: .rightThird, label: "⌃⌥ L"),
+            Self(keyCode: UInt32(kVK_ANSI_J), modifiers: commandModifiers, zone: .leftTwoThirds, label: "⌃⌥⌘ J"),
+            Self(keyCode: UInt32(kVK_ANSI_L), modifiers: commandModifiers, zone: .rightTwoThirds, label: "⌃⌥⌘ L"),
             Self(keyCode: UInt32(kVK_ANSI_U), modifiers: baseline, zone: .topLeftQuadrant, label: "⌃⌥ U"),
             Self(keyCode: UInt32(kVK_ANSI_O), modifiers: baseline, zone: .topRightQuadrant, label: "⌃⌥ O"),
             Self(keyCode: UInt32(kVK_ANSI_M), modifiers: baseline, zone: .bottomLeftQuadrant, label: "⌃⌥ M"),
             Self(keyCode: UInt32(kVK_ANSI_Period), modifiers: baseline, zone: .bottomRightQuadrant, label: "⌃⌥ ."),
-            Self(keyCode: UInt32(kVK_ANSI_U), modifiers: sixths, zone: .topLeftSixth, label: "⌃⌥⌘ U"),
-            Self(keyCode: UInt32(kVK_ANSI_I), modifiers: sixths, zone: .topCenterSixth, label: "⌃⌥⌘ I"),
-            Self(keyCode: UInt32(kVK_ANSI_O), modifiers: sixths, zone: .topRightSixth, label: "⌃⌥⌘ O"),
-            Self(keyCode: UInt32(kVK_ANSI_M), modifiers: sixths, zone: .bottomLeftSixth, label: "⌃⌥⌘ M"),
-            Self(keyCode: UInt32(kVK_ANSI_Comma), modifiers: sixths, zone: .bottomCenterSixth, label: "⌃⌥⌘ ,"),
-            Self(keyCode: UInt32(kVK_ANSI_Period), modifiers: sixths, zone: .bottomRightSixth, label: "⌃⌥⌘ ."),
-            Self(keyCode: UInt32(kVK_LeftArrow), modifiers: sixths, command: .moveDisplay(.left), label: "⌃⌥⌘ ←"),
-            Self(keyCode: UInt32(kVK_RightArrow), modifiers: sixths, command: .moveDisplay(.right), label: "⌃⌥⌘ →")
+            Self(keyCode: UInt32(kVK_ANSI_U), modifiers: commandModifiers, zone: .topLeftSixth, label: "⌃⌥⌘ U"),
+            Self(keyCode: UInt32(kVK_ANSI_I), modifiers: commandModifiers, zone: .topCenterSixth, label: "⌃⌥⌘ I"),
+            Self(keyCode: UInt32(kVK_ANSI_O), modifiers: commandModifiers, zone: .topRightSixth, label: "⌃⌥⌘ O"),
+            Self(keyCode: UInt32(kVK_ANSI_M), modifiers: commandModifiers, zone: .bottomLeftSixth, label: "⌃⌥⌘ M"),
+            Self(keyCode: UInt32(kVK_ANSI_Comma), modifiers: commandModifiers, zone: .bottomCenterSixth, label: "⌃⌥⌘ ,"),
+            Self(keyCode: UInt32(kVK_ANSI_Period), modifiers: commandModifiers, zone: .bottomRightSixth, label: "⌃⌥⌘ ."),
+            Self(keyCode: UInt32(kVK_LeftArrow), modifiers: commandModifiers, command: .moveDisplay(.left), label: "⌃⌥⌘ ←"),
+            Self(keyCode: UInt32(kVK_RightArrow), modifiers: commandModifiers, command: .moveDisplay(.right), label: "⌃⌥⌘ →")
         ]
     }()
 }

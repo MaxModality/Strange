@@ -13,7 +13,7 @@ public enum AnchoredPlacement {
         if acceptedSize == ideal.size { return ideal }
 
         let cell = zone.cell
-        let horizontal: Anchor = cell.columns == 1 || cell.column == 1 && cell.columns == 3
+        let horizontal: Anchor = cell.columns == 1 || cell.column == 1 && cell.columns == 3 && zone.columnSpan == 1
             ? .center : cell.column == 0 ? .leading : .trailing
         let vertical: Anchor = cell.rows == 1 ? .center : cell.row == 0 ? .leading : .trailing
         let x = try origin(anchor: horizontal, lower: availableFrame.minX,

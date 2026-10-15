@@ -7,6 +7,7 @@ public enum WindowZone: String, CaseIterable, Sendable {
     case whole
     case leftHalf, rightHalf, topHalf, bottomHalf
     case leftThird, centerThird, rightThird
+    case leftTwoThirds, rightTwoThirds
     case topLeftQuadrant, topRightQuadrant, bottomLeftQuadrant, bottomRightQuadrant
     case topLeftSixth, topCenterSixth, topRightSixth
     case bottomLeftSixth, bottomCenterSixth, bottomRightSixth
@@ -21,6 +22,8 @@ public enum WindowZone: String, CaseIterable, Sendable {
         case .leftThird: (3, 1, 0, 0)
         case .centerThird: (3, 1, 1, 0)
         case .rightThird: (3, 1, 2, 0)
+        case .leftTwoThirds: (3, 1, 0, 0)
+        case .rightTwoThirds: (3, 1, 1, 0)
         case .topLeftQuadrant: (2, 2, 0, 0)
         case .topRightQuadrant: (2, 2, 1, 0)
         case .bottomLeftQuadrant: (2, 2, 0, 1)
@@ -31,6 +34,13 @@ public enum WindowZone: String, CaseIterable, Sendable {
         case .bottomLeftSixth: (3, 2, 0, 1)
         case .bottomCenterSixth: (3, 2, 1, 1)
         case .bottomRightSixth: (3, 2, 2, 1)
+        }
+    }
+
+    var columnSpan: Int {
+        switch self {
+        case .leftTwoThirds, .rightTwoThirds: 2
+        default: 1
         }
     }
 }
@@ -51,7 +61,7 @@ public enum ZoneGeometry {
         let xs = try boundaries(origin: availableFrame.minX, length: availableFrame.width, count: cell.columns, scale: scale)
         let ys = try boundaries(origin: availableFrame.minY, length: availableFrame.height, count: cell.rows, scale: scale)
         return CGRect(x: xs[cell.column], y: ys[cell.row],
-                      width: xs[cell.column + 1] - xs[cell.column],
+                      width: xs[cell.column + zone.columnSpan] - xs[cell.column],
                       height: ys[cell.row + 1] - ys[cell.row])
     }
 

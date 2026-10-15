@@ -15,6 +15,15 @@ final class AnchoredPlacementTests: XCTestCase {
                        CGRect(x: -600, y: 25, width: 600, height: 1500))
     }
 
+    func testConstrainedTwoThirdsKeepTheirOuterEdges() throws {
+        let available = CGRect(x: -900, y: 25, width: 900, height: 1500)
+        let size = CGSize(width: 750, height: 1500)
+        XCTAssertEqual(try AnchoredPlacement.frame(for: .leftTwoThirds, acceptedSize: size, in: available),
+                       CGRect(x: -900, y: 25, width: 750, height: 1500))
+        XCTAssertEqual(try AnchoredPlacement.frame(for: .rightTwoThirds, acceptedSize: size, in: available),
+                       CGRect(x: -750, y: 25, width: 750, height: 1500))
+    }
+
     func testQuadrantsAndSixthsExpandInwardFromBothEdges() throws {
         let available = CGRect(x: -900, y: -1500, width: 900, height: 1500)
         let size = CGSize(width: 600, height: 950)

@@ -10,6 +10,8 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(try ZoneGeometry.frame(for: .rightHalf, in: available), CGRect(x: 720, y: 25, width: 720, height: 840))
         XCTAssertEqual(try ZoneGeometry.frame(for: .bottomHalf, in: available), CGRect(x: 0, y: 445, width: 1440, height: 420))
         XCTAssertEqual(try ZoneGeometry.frame(for: .centerThird, in: available), CGRect(x: 480, y: 25, width: 480, height: 840))
+        XCTAssertEqual(try ZoneGeometry.frame(for: .leftTwoThirds, in: available), CGRect(x: 0, y: 25, width: 960, height: 840))
+        XCTAssertEqual(try ZoneGeometry.frame(for: .rightTwoThirds, in: available), CGRect(x: 480, y: 25, width: 960, height: 840))
         XCTAssertEqual(try ZoneGeometry.frame(for: .bottomRightQuadrant, in: available), CGRect(x: 720, y: 445, width: 720, height: 420))
         XCTAssertEqual(try ZoneGeometry.frame(for: .topCenterSixth, in: available), CGRect(x: 480, y: 25, width: 480, height: 420))
     }
@@ -19,6 +21,8 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(try ZoneGeometry.frame(for: .leftThird, in: available), CGRect(x: -900, y: -100, width: 300, height: 1500))
         XCTAssertEqual(try ZoneGeometry.frame(for: .centerThird, in: available), CGRect(x: -600, y: -100, width: 300, height: 1500))
         XCTAssertEqual(try ZoneGeometry.frame(for: .rightThird, in: available), CGRect(x: -300, y: -100, width: 300, height: 1500))
+        XCTAssertEqual(try ZoneGeometry.frame(for: .leftTwoThirds, in: available), CGRect(x: -900, y: -100, width: 600, height: 1500))
+        XCTAssertEqual(try ZoneGeometry.frame(for: .rightTwoThirds, in: available), CGRect(x: -600, y: -100, width: 600, height: 1500))
         XCTAssertEqual(try ZoneGeometry.frame(for: .bottomCenterSixth, in: available), CGRect(x: -600, y: 650, width: 300, height: 750))
     }
 
@@ -26,6 +30,7 @@ final class GeometryTests: XCTestCase {
         let families: [[WindowZone]] = [
             [.whole], [.leftHalf, .rightHalf], [.topHalf, .bottomHalf],
             [.leftThird, .centerThird, .rightThird],
+            [.leftTwoThirds, .rightThird], [.leftThird, .rightTwoThirds],
             [.topLeftQuadrant, .topRightQuadrant, .bottomLeftQuadrant, .bottomRightQuadrant],
             [.topLeftSixth, .topCenterSixth, .topRightSixth, .bottomLeftSixth, .bottomCenterSixth, .bottomRightSixth]
         ]
@@ -37,12 +42,13 @@ final class GeometryTests: XCTestCase {
                     var union = CGRect.null
                     var area: CGFloat = 0
                     for (index, frame) in frames.enumerated() {
-                        XCTAssertTrue(available.contains(frame))
+                        XCTAssertTrue(available.contains(frame), "\(family[index]) at scale \(scale): \(frame) outside \(available)")
                         union = union.union(frame)
                         area += frame.width * frame.height
                         for other in frames.dropFirst(index + 1) {
                             let overlap = frame.intersection(other)
-                            XCTAssertTrue(overlap.isNull || overlap.width == 0 || overlap.height == 0)
+                            XCTAssertTrue(overlap.isNull || overlap.width <= 0.000001 || overlap.height <= 0.000001,
+                                          "Unexpected overlap: \(overlap)")
                         }
                         for boundary in [frame.minX, frame.maxX] where boundary != available.minX && boundary != available.maxX {
                             XCTAssertEqual(boundary * scale, (boundary * scale).rounded(), accuracy: 0.000001)

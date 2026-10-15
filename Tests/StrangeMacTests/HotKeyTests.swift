@@ -21,8 +21,10 @@ final class HotKeyTests: XCTestCase {
         ], modifiers: UInt32(controlKey | optionKey))
     }
 
-    func testCommandShortcutsMatchRequestedSixths() {
+    func testCommandShortcutsMatchRequestedSixthsAndTwoThirds() {
         assertMappings([
+            (kVK_ANSI_J, .leftTwoThirds),
+            (kVK_ANSI_L, .rightTwoThirds),
             (kVK_ANSI_U, .topLeftSixth),
             (kVK_ANSI_I, .topCenterSixth),
             (kVK_ANSI_O, .topRightSixth),
@@ -34,8 +36,8 @@ final class HotKeyTests: XCTestCase {
 
     func testEveryZoneHasOneUniqueUnshiftedShortcut() {
         let bindings = HotKeyBinding.defaults
-        XCTAssertEqual(bindings.count, 22)
-        XCTAssertEqual(bindings.compactMap(\.zone).count, 18)
+        XCTAssertEqual(bindings.count, 24)
+        XCTAssertEqual(bindings.compactMap(\.zone).count, 20)
         XCTAssertEqual(Set(bindings.compactMap(\.zone)), Set(WindowZone.allCases))
         XCTAssertEqual(Set(bindings.map { "\($0.keyCode):\($0.modifiers)" }).count, bindings.count)
         for binding in bindings {
