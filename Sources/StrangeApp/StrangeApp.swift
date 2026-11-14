@@ -1,11 +1,12 @@
 import AppKit
+import ServiceManagement
 import StrangeCore
 import StrangeMac
 
 @main @MainActor struct StrangeApp {
     static func main() {
         if CommandLine.arguments.dropFirst() == ["--version"] {
-            print("0.8.0")
+            print("0.9.0")
             return
         }
         let arguments = Array(CommandLine.arguments.dropFirst())
@@ -44,12 +45,14 @@ import StrangeMac
     private let manager = WindowManager()
     private var hotKeys: GlobalHotKeys?
     private var statusItem: NSStatusItem?
+    private var startAtLoginItem: NSMenuItem?
     private let status = NSMenuItem(title: "Starting…", action: nil, keyEquivalent: "")
     private var activeTarget: WindowTarget?
     private lazy var placementQueue = makePlacementQueue()
     private var registrationFailure: String?
     private var queueFailure: String?
     private var placementMessage: String?
+    private var loginItemMessage: String?
     private var timeline = WindowFrameTimeline()
 
     private func makePlacementQueue() -> PlacementQueue {
@@ -88,8 +91,13 @@ import StrangeMac
         item.button?.toolTip = "Strange"
         let menu = NSMenu()
         menu.delegate = self
-        menu.addItem(NSMenuItem(title: "Strange 0.8.0", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Strange 0.9.0", action: nil, keyEquivalent: ""))
         menu.addItem(status)
+        menu.addItem(.separator())
+        let startAtLogin = menu.addItem(withTitle: "Start at Login", action: #selector(toggleStartAtLogin), keyEquivalent: "")
+        startAtLogin.target = self
+        startAtLoginItem = startAtLogin
+        refreshStartAtLoginItem()
         menu.addItem(.separator())
         let permission = menu.addItem(withTitle: "Enable Accessibility Access…", action: #selector(requestPermission), keyEquivalent: "")
         permission.target = self
@@ -165,6 +173,8 @@ import StrangeMac
             status.title = registrationFailure
         } else if !WindowManager.hasAccessibilityPermission {
             status.title = "Enable Accessibility access to move windows."
+        } else if let loginItemMessage {
+            status.title = loginItemMessage
         } else if let queueFailure {
             status.title = queueFailure
         } else if placementQueue.isRunning {
@@ -174,7 +184,64 @@ import StrangeMac
         }
     }
 
-    func menuWillOpen(_ menu: NSMenu) { refreshStatus() }
+    func menuWillOpen(_ menu: NSMenu) {
+        refreshStartAtLoginItem()
+        refreshStatus()
+    }
+
+    private func refreshStartAtLoginItem() {
+        guard let startAtLoginItem else { return }
+        switch SMAppService.mainApp.status {
+        case .enabled:
+            startAtLoginItem.title = "Start at Login"
+            startAtLoginItem.state = .on
+            startAtLoginItem.isEnabled = true
+        case .notRegistered:
+            startAtLoginItem.title = "Start at Login"
+            startAtLoginItem.state = .off
+            startAtLoginItem.isEnabled = true
+        case .requiresApproval:
+            startAtLoginItem.title = "Start at Login (Approval Required)…"
+            startAtLoginItem.state = .mixed
+            startAtLoginItem.isEnabled = true
+        case .notFound:
+            // A main app can have no existing Service Management record yet.
+            // Keep registration available and let register() report real errors.
+            startAtLoginItem.title = "Start at Login"
+            startAtLoginItem.state = .off
+            startAtLoginItem.isEnabled = true
+        @unknown default:
+            startAtLoginItem.title = "Start at Login (Unavailable)"
+            startAtLoginItem.state = .off
+            startAtLoginItem.isEnabled = false
+        }
+    }
+
+    @objc private func toggleStartAtLogin() {
+        let service = SMAppService.mainApp
+        do {
+            switch service.status {
+            case .enabled:
+                try service.unregister()
+                loginItemMessage = nil
+            case .notRegistered:
+                try service.register()
+                loginItemMessage = nil
+            case .notFound:
+                try service.register()
+                loginItemMessage = nil
+            case .requiresApproval:
+                SMAppService.openSystemSettingsLoginItems()
+                loginItemMessage = nil
+            @unknown default:
+                loginItemMessage = "Could not update the Start at Login setting."
+            }
+        } catch {
+            loginItemMessage = "Could not update the Start at Login setting."
+        }
+        refreshStartAtLoginItem()
+        refreshStatus()
+    }
 
     @objc private func requestPermission() {
         _ = WindowManager.requestAccessibilityPermission()
