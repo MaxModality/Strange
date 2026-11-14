@@ -36,7 +36,7 @@ final class HotKeyTests: XCTestCase {
 
     func testEveryZoneHasOneUniqueUnshiftedShortcut() {
         let bindings = HotKeyBinding.defaults
-        XCTAssertEqual(bindings.count, 24)
+        XCTAssertEqual(bindings.count, 26)
         XCTAssertEqual(bindings.compactMap(\.zone).count, 20)
         XCTAssertEqual(Set(bindings.compactMap(\.zone)), Set(WindowZone.allCases))
         XCTAssertEqual(Set(bindings.map { "\($0.keyCode):\($0.modifiers)" }).count, bindings.count)
@@ -54,6 +54,18 @@ final class HotKeyTests: XCTestCase {
             XCTAssertEqual(matches.first?.modifiers, modifiers)
             XCTAssertEqual(matches.first?.command, .resize(direction))
         }
+    }
+
+    func testTimelineShortcutsUseControlOptionBrackets() {
+        let modifiers = UInt32(controlKey | optionKey)
+        XCTAssertEqual(HotKeyBinding.defaults.first { $0.keyCode == UInt32(kVK_ANSI_LeftBracket) }?.command,
+                       .historyStep(.left))
+        XCTAssertEqual(HotKeyBinding.defaults.first { $0.keyCode == UInt32(kVK_ANSI_RightBracket) }?.command,
+                       .historyStep(.right))
+        XCTAssertTrue(HotKeyBinding.defaults.filter {
+            if case .historyStep = $0.command { return true }
+            return false
+        }.allSatisfy { $0.modifiers == modifiers })
     }
 
     private func assertMappings(

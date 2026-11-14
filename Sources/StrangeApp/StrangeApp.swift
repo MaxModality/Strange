@@ -5,7 +5,7 @@ import StrangeMac
 @main @MainActor struct StrangeApp {
     static func main() {
         if CommandLine.arguments.dropFirst() == ["--version"] {
-            print("0.7.0")
+            print("0.8.0")
             return
         }
         let arguments = Array(CommandLine.arguments.dropFirst())
@@ -50,6 +50,7 @@ import StrangeMac
     private var registrationFailure: String?
     private var queueFailure: String?
     private var placementMessage: String?
+    private var timeline = WindowFrameTimeline()
 
     private func makePlacementQueue() -> PlacementQueue {
         PlacementQueue(commandOperation: { [weak self, manager] command, processID in
@@ -61,9 +62,16 @@ import StrangeMac
             try Task.checkCancellation()
             guard let target = self?.activeTarget else { throw CancellationError() }
             guard target.processID == processID else { throw PlacementError.focusChanged }
-            let result = try await manager.performWindowCommand(target, command: command)
+            let before = try await manager.currentFrame(of: target)
+            if case .historyStep(let direction) = command {
+                guard let destination = self?.timeline.step(direction, current: before) else { return }
+                _ = try await manager.restoreWindow(target, to: destination)
+            } else {
+                let result = try await manager.performWindowCommand(target, command: command)
+                self?.timeline.record(from: before, to: result.actualFrame)
+            }
             try Task.checkCancellation()
-            self?.placementMessage = result.isSizeConstrained ? "Window placed at its supported size." : "Window placed."
+            self?.placementMessage = "Window placed."
         }, onFailure: { [weak self] error in
             self?.placementMessage = Self.message(for: error)
             if error is PlacementQueueError { self?.queueFailure = Self.message(for: error) }
@@ -80,7 +88,7 @@ import StrangeMac
         item.button?.toolTip = "Strange"
         let menu = NSMenu()
         menu.delegate = self
-        menu.addItem(NSMenuItem(title: "Strange 0.7.0", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Strange 0.8.0", action: nil, keyEquivalent: ""))
         menu.addItem(status)
         menu.addItem(.separator())
         let permission = menu.addItem(withTitle: "Enable Accessibility Access…", action: #selector(requestPermission), keyEquivalent: "")
@@ -181,5 +189,49 @@ import StrangeMac
         hotKeys = nil
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
         statusItem = nil
+    }
+}
+
+/// Bounded, in-memory frame history. A mismatched current frame starts a new
+/// timeline, so history never crosses to another window or external movement.
+@MainActor private struct WindowFrameTimeline {
+    private var frames: [CGRect] = []
+    private var cursor = -1
+    private let limit = 64
+
+    mutating func record(from oldFrame: CGRect, to newFrame: CGRect) {
+        if frames.indices.contains(cursor), matches(frames[cursor], oldFrame) {
+            frames = Array(frames.prefix(cursor + 1))
+        } else {
+            frames = [oldFrame]
+            cursor = 0
+        }
+        guard !matches(oldFrame, newFrame) else { return }
+        frames.append(newFrame)
+        cursor = frames.count - 1
+        if frames.count > limit {
+            frames.removeFirst(frames.count - limit)
+            cursor = frames.count - 1
+        }
+    }
+
+    mutating func step(_ direction: DisplayDirection, current: CGRect) -> CGRect? {
+        guard frames.indices.contains(cursor) else { frames = [current]; cursor = 0; return nil }
+        guard matches(frames[cursor], current) else {
+            frames = [current]
+            cursor = 0
+            return nil
+        }
+        switch direction {
+        case .left where cursor > 0: cursor -= 1
+        case .right where cursor + 1 < frames.count: cursor += 1
+        default: return nil
+        }
+        return frames[cursor]
+    }
+
+    private func matches(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        abs(lhs.minX - rhs.minX) <= 1 && abs(lhs.minY - rhs.minY) <= 1
+            && abs(lhs.width - rhs.width) <= 1 && abs(lhs.height - rhs.height) <= 1
     }
 }

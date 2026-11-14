@@ -130,6 +130,45 @@ public actor WindowManager {
         try await performWindowCommand(focus, command: .zone(zone))
     }
 
+    /// Read a focused target's current frame for the app's transient change timeline.
+    public func currentFrame(of focus: WindowTarget) async throws -> CGRect {
+        guard AXIsProcessTrusted() else { throw PlacementError.accessibilityPermissionRequired }
+        try await AccessibilityRetry.call(isolation: self) { try self.validate(focus.window) }
+        return try await AccessibilityRetry.call(isolation: self) { try self.frame(focus.window) }
+    }
+
+    /// Restore an exact previously observed frame, while rechecking focus before writes.
+    public func restoreWindow(_ focus: WindowTarget, to frame: CGRect) async throws -> CGRect {
+        guard !isPlacing else { throw PlacementError.busy }
+        isPlacing = true
+        defer { isPlacing = false }
+        guard AXIsProcessTrusted() else { throw PlacementError.accessibilityPermissionRequired }
+        guard frame.origin.x.isFinite, frame.origin.y.isFinite,
+              frame.width.isFinite, frame.height.isFinite, frame.width > 0, frame.height > 0 else {
+            throw PlacementError.unsupportedWindow
+        }
+        try await AccessibilityRetry.call(isolation: self) { try self.validate(focus.window) }
+        let source = try await AccessibilityRetry.call(isolation: self) { try self.frame(focus.window) }
+        let actual = try await FrameTransition.prepare(source: source, destination: frame, tolerance: 1,
+                                                       isolation: self, move: { point in
+            try await AccessibilityRetry.call(isolation: self) {
+                try await self.ensureFocus(focus.application, window: focus.window, processID: focus.processID)
+                try Task.checkCancellation()
+                try self.set(focus.window, attribute: kAXPositionAttribute, point: point)
+            }
+        }, resize: { size in
+            try await AccessibilityRetry.call(isolation: self) {
+                try await self.ensureFocus(focus.application, window: focus.window, processID: focus.processID)
+                try Task.checkCancellation()
+                try self.set(focus.window, attribute: kAXSizeAttribute, size: size)
+            }
+        }, readFrame: {
+            try await AccessibilityRetry.call(isolation: self) { try self.frame(focus.window) }
+        })
+        guard FrameVerification.matches(actual, frame, tolerance: 1) else { throw PlacementError.frameNotAccepted }
+        return actual
+    }
+
     public func performWindowCommand(_ focus: WindowTarget, command: WindowCommand) async throws -> PlacementResult {
         guard !isPlacing else { throw PlacementError.busy }
         isPlacing = true
@@ -161,6 +200,8 @@ public actor WindowManager {
             }
             index = destination
             zone = .whole
+        case .historyStep:
+            throw PlacementError.unsupportedWindow
         }
         let display = desktop.displays[index]
         let resize: EdgeResize?

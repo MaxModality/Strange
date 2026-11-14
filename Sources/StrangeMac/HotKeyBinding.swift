@@ -32,6 +32,8 @@ public struct HotKeyBinding: Equatable, Sendable {
         return [
             Self(keyCode: UInt32(kVK_ANSI_Minus), modifiers: baseline, command: .resize(.shrink), label: "⌃⌥ -"),
             Self(keyCode: UInt32(kVK_ANSI_Equal), modifiers: baseline, command: .resize(.grow), label: "⌃⌥ ="),
+            Self(keyCode: UInt32(kVK_ANSI_LeftBracket), modifiers: baseline, command: .historyStep(.left), label: "⌃⌥ ["),
+            Self(keyCode: UInt32(kVK_ANSI_RightBracket), modifiers: baseline, command: .historyStep(.right), label: "⌃⌥ ]"),
             Self(keyCode: UInt32(kVK_Return), modifiers: baseline, zone: .whole, label: "⌃⌥ Return"),
             Self(keyCode: UInt32(kVK_LeftArrow), modifiers: baseline, zone: .leftHalf, label: "⌃⌥ ←"),
             Self(keyCode: UInt32(kVK_RightArrow), modifiers: baseline, zone: .rightHalf, label: "⌃⌥ →"),

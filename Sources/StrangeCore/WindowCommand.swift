@@ -9,6 +9,7 @@ public enum WindowCommand: Sendable, Equatable {
     case zone(WindowZone)
     case moveDisplay(DisplayDirection)
     case resize(ResizeDirection)
+    case historyStep(DisplayDirection)
 
     public var label: String {
         switch self {
@@ -17,6 +18,8 @@ public enum WindowCommand: Sendable, Equatable {
         case .resize(.grow): "Grow free edges"
         case .moveDisplay(.left): "Previous display (whole)"
         case .moveDisplay(.right): "Next display (whole)"
+        case .historyStep(.left): "Undo window change"
+        case .historyStep(.right): "Redo window change"
         }
     }
 }
