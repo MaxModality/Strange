@@ -6,7 +6,7 @@ import StrangeMac
 @main @MainActor struct StrangeApp {
     static func main() {
         if CommandLine.arguments.dropFirst() == ["--version"] {
-            print("0.9.0")
+            print("0.9.3")
             return
         }
         let arguments = Array(CommandLine.arguments.dropFirst())
@@ -75,7 +75,7 @@ import StrangeMac
             }
             try Task.checkCancellation()
             self?.placementMessage = "Window placed."
-        }, onFailure: { [weak self] error in
+        }, coalescePendingPlacements: true, onFailure: { [weak self] error in
             self?.placementMessage = Self.message(for: error)
             if error is PlacementQueueError { self?.queueFailure = Self.message(for: error) }
             self?.refreshStatus()
@@ -91,7 +91,7 @@ import StrangeMac
         item.button?.toolTip = "Strange"
         let menu = NSMenu()
         menu.delegate = self
-        menu.addItem(NSMenuItem(title: "Strange 0.9.0", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Strange 0.9.3", action: nil, keyEquivalent: ""))
         menu.addItem(status)
         menu.addItem(.separator())
         let startAtLogin = menu.addItem(withTitle: "Start at Login", action: #selector(toggleStartAtLogin), keyEquivalent: "")

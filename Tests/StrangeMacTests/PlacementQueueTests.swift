@@ -67,6 +67,31 @@ import StrangeCore
 }
 
 final class PlacementQueueTests: XCTestCase {
+    @MainActor func testInteractiveArrowBurstKeepsLatestWaitingPlacementAndResizeBarrier() async {
+        let gate = PlacementGate()
+        var commands: [WindowCommand] = []
+        let queue = PlacementQueue(commandOperation: { command, processID in
+            commands.append(command)
+            try await gate.operate(.whole, processID)
+        }, coalescePendingPlacements: true, onCommandSuccess: { _ in gate.succeed(.whole) })
+        queue.enqueue(command: .zone(.leftHalf), processID: 1)
+        await gate.waitForStarts(1)
+        for _ in 0..<20 {
+            queue.enqueue(command: .zone(.rightHalf), processID: 1)
+            queue.enqueue(command: .moveDisplay(.left), processID: 1)
+        }
+        queue.enqueue(command: .zone(.whole), processID: 1)
+        queue.enqueue(command: .resize(.shrink), processID: 1)
+        queue.enqueue(command: .moveDisplay(.left), processID: 1)
+        queue.enqueue(command: .moveDisplay(.right), processID: 1)
+        for count in 1...4 {
+            await gate.waitForStarts(count)
+            gate.finish()
+        }
+        await gate.waitForSuccesses(4)
+        XCTAssertEqual(commands, [.zone(.leftHalf), .zone(.whole), .resize(.shrink), .moveDisplay(.right)])
+    }
+
     @MainActor func testMixedZoneAndDisplayCommandsPreserveOrderIncludingRepeatedMoves() async {
         let gate = PlacementGate()
         var commands: [WindowCommand] = []

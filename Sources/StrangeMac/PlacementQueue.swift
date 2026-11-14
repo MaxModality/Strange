@@ -5,17 +5,25 @@ public enum PlacementQueueError: Error, Equatable, Sendable {
     case queueFull
 }
 
-/// Serializes shortcuts without losing rapid, distinct placements. Process IDs
-/// remain transient and let the operation reject requests after focus changes.
+/// Serializes window writes. Interactive clients may replace waiting placements
+/// with the latest intent. Process IDs remain transient for focus validation.
 @MainActor public final class PlacementQueue {
     public typealias Operation = @MainActor (WindowZone, pid_t) async throws -> Void
     public typealias CommandOperation = @MainActor (WindowCommand, pid_t) async throws -> Void
     private struct Request: Equatable {
         let command: WindowCommand
         let processID: pid_t
+
+        var isPlacement: Bool {
+            switch command {
+            case .zone, .moveDisplay: true
+            case .resize, .historyStep: false
+            }
+        }
     }
 
     private let operation: CommandOperation
+    private let coalescePendingPlacements: Bool
     private let onSuccess: (@MainActor (WindowCommand) -> Void)?
     private let onFailure: (@MainActor (any Error) -> Void)?
     private let onIdle: (@MainActor () -> Void)?
@@ -39,10 +47,12 @@ public enum PlacementQueueError: Error, Equatable, Sendable {
     }
 
     public init(commandOperation: @escaping CommandOperation,
+                coalescePendingPlacements: Bool = false,
                 onCommandSuccess: (@MainActor (WindowCommand) -> Void)? = nil,
                 onFailure: (@MainActor (any Error) -> Void)? = nil,
                 onIdle: (@MainActor () -> Void)? = nil) {
         self.operation = commandOperation
+        self.coalescePendingPlacements = coalescePendingPlacements
         self.onSuccess = onCommandSuccess
         self.onFailure = onFailure
         self.onIdle = onIdle
@@ -56,8 +66,13 @@ public enum PlacementQueueError: Error, Equatable, Sendable {
 
     public func enqueue(command: WindowCommand, processID: pid_t) {
         let request = Request(command: command, processID: processID)
-        // Zone repeats have one destination. Display moves and resizes are
-        // relative, so every press must execute, including consecutive repeats.
+        // Finish in-flight AX writes safely, but don't replay obsolete waiting
+        // destinations. Explicit resize/history commands form ordering barriers.
+        if coalescePendingPlacements, request.isPlacement {
+            while let last = pending.last, last.processID == processID, last.isPlacement {
+                pending.removeLast()
+            }
+        }
         if case .zone = command, request == (pending.last ?? inFlight) { return }
         guard pending.count < 32 else {
             onFailure?(PlacementQueueError.queueFull)
