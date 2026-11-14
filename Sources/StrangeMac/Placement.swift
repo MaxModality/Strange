@@ -39,9 +39,8 @@ enum FrameVerification {
     }
 }
 
-/// Establish the target origin before growing. A shrunken right/bottom window
-/// can otherwise be clamped to the space remaining at its current origin.
-/// Display transfers also shrink overflowing dimensions before relocation.
+/// Establish room for growth before resizing, including on the same display.
+/// Otherwise an app can clamp growth at the old origin on every attempt.
 enum FrameTransition {
     static func prepare(source: CGRect, destination: CGRect, tolerance: CGFloat, changesDisplay: Bool = true,
                         isolation: isolated (any Actor)? = #isolation,
@@ -81,12 +80,16 @@ enum SizeSettlement {
                      wait: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) async throws -> (frame: CGRect, isStable: Bool) {
         try Task.checkCancellation()
         var previous = try await readFrame()
-        for milliseconds in [16, 32] {
+        // Stable app limits need only one confirming poll. Continue the longer
+        // bounded backoff only while the application is still changing size.
+        for milliseconds in [16, 32, 64, 128] {
             if matches(previous.size, requested, tolerance: tolerance) { return (previous, true) }
             try await wait(.milliseconds(milliseconds))
             try Task.checkCancellation()
             let next = try await readFrame()
-            if matches(next.size, previous.size, tolerance: tolerance) { return (next, true) }
+            if matches(next.size, previous.size, tolerance: tolerance) {
+                return (next, true)
+            }
             previous = next
         }
         return (previous, matches(previous.size, requested, tolerance: tolerance))

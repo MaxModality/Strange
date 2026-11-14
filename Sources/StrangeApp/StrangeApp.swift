@@ -6,7 +6,7 @@ import StrangeMac
 @main @MainActor struct StrangeApp {
     static func main() {
         if CommandLine.arguments.dropFirst() == ["--version"] {
-            print("0.9.3")
+            print("0.9.4")
             return
         }
         let arguments = Array(CommandLine.arguments.dropFirst())
@@ -65,13 +65,13 @@ import StrangeMac
             try Task.checkCancellation()
             guard let target = self?.activeTarget else { throw CancellationError() }
             guard target.processID == processID else { throw PlacementError.focusChanged }
-            let before = try await manager.currentFrame(of: target)
             if case .historyStep(let direction) = command {
+                let before = try await manager.currentFrame(of: target)
                 guard let destination = self?.timeline.step(direction, current: before) else { return }
                 _ = try await manager.restoreWindow(target, to: destination)
             } else {
                 let result = try await manager.performWindowCommand(target, command: command)
-                self?.timeline.record(from: before, to: result.actualFrame)
+                self?.timeline.record(from: result.originalFrame, to: result.actualFrame)
             }
             try Task.checkCancellation()
             self?.placementMessage = "Window placed."
@@ -91,7 +91,7 @@ import StrangeMac
         item.button?.toolTip = "Strange"
         let menu = NSMenu()
         menu.delegate = self
-        menu.addItem(NSMenuItem(title: "Strange 0.9.3", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Strange 0.9.4", action: nil, keyEquivalent: ""))
         menu.addItem(status)
         menu.addItem(.separator())
         let startAtLogin = menu.addItem(withTitle: "Start at Login", action: #selector(toggleStartAtLogin), keyEquivalent: "")

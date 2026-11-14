@@ -51,8 +51,8 @@ import XCTest
             return CGRect(x: 0, y: 0, width: 100 + reads * 20, height: 800)
         }, wait: { waits.append($0) })
         XCTAssertFalse(result.isStable)
-        XCTAssertEqual(reads, 3)
-        XCTAssertEqual(waits.count, 2)
+        XCTAssertEqual(reads, 5)
+        XCTAssertEqual(waits, [.milliseconds(16), .milliseconds(32), .milliseconds(64), .milliseconds(128)])
     }
 
     func testCancelledWaitStopsFurtherReadbacks() async {

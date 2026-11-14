@@ -42,6 +42,8 @@ private struct DockConfiguration: Sendable {
 }
 
 public struct PlacementResult: Sendable {
+    /// The frame read before placement, reused by the transient undo timeline.
+    public let originalFrame: CGRect
     /// The ideal zone or resize frame before application size constraints.
     public let idealFrame: CGRect
     /// The effective, anchored frame that was verified against the application.
@@ -65,6 +67,8 @@ private struct DesktopSnapshot: Sendable {
             throw PlacementError.noActiveWindow
         }
         let screens = NSScreen.screens
+        // NSScreen.main follows keyboard focus. Only screens.first defines the
+        // global AppKit origin used to convert all screens to AX coordinates.
         guard let primary = screens.first else { throw PlacementError.noDisplay }
         return try Self(processID: application.processIdentifier, displays: screens.map {
             let insets = $0.safeAreaInsets
@@ -222,17 +226,8 @@ public actor WindowManager {
                                                in: display.availableFrame, scale: display.scale)
         }
         let tolerance = 1 / display.scale
-        if resize != nil, target == original {
-            try Task.checkCancellation()
-            try await AccessibilityRetry.call(isolation: self) {
-                try await self.ensureFocus(application, window: window, processID: desktop.processID)
-            }
-            return try placementResult(ideal: target, effective: target, actual: original,
-                                       available: display.availableFrame, tolerance: tolerance)
-        }
-
-        // AX has no atomic frame setter. Prepare room for growth, then
-        // anchor the accepted size so a refused resize stays contained when possible.
+        // AX has no atomic frame setter. Make room before growth, then anchor
+        // the accepted size so app-side clamping does not compound each press.
         var current = try await FrameTransition.prepare(source: original, destination: target, tolerance: tolerance,
                                                        changesDisplay: index != sourceIndex, isolation: self, move: { point in
             try await AccessibilityRetry.call(isolation: self) {
@@ -249,6 +244,15 @@ public actor WindowManager {
         }, readFrame: {
             try await AccessibilityRetry.call(isolation: self) { try self.frame(window) }
         })
+        // Preparation may already have completed the exact placement. Reuse its
+        // verified readback instead of writing the same position and reading again.
+        if FrameVerification.matches(current, target, tolerance: tolerance) {
+            try await AccessibilityRetry.call(isolation: self) {
+                try await self.ensureFocus(application, window: window, processID: desktop.processID)
+            }
+            return try placementResult(original: original, ideal: target, effective: target, actual: current,
+                                       available: display.availableFrame, tolerance: tolerance)
+        }
         var constraintCandidate: CGSize?
         for attempt in 0..<3 {
             try Task.checkCancellation()
@@ -263,7 +267,7 @@ public actor WindowManager {
                     try await AccessibilityRetry.call(isolation: self) {
                         try await self.ensureFocus(application, window: window, processID: desktop.processID)
                     }
-                    return try placementResult(ideal: target, effective: anchored, actual: settled,
+                    return try placementResult(original: original, ideal: target, effective: anchored, actual: settled,
                                                available: display.availableFrame, tolerance: tolerance)
                 }
                 current = settled
@@ -288,7 +292,7 @@ public actor WindowManager {
             let actual = try await AccessibilityRetry.call(isolation: self) { try self.frame(window) }
             current = actual
             if FrameVerification.matches(actual, target, tolerance: tolerance) {
-                return try placementResult(ideal: target, effective: target, actual: actual,
+                return try placementResult(original: original, ideal: target, effective: target, actual: actual,
                                            available: display.availableFrame, tolerance: tolerance)
             }
             let actualAnchor = try anchoredFrame(actual.size)
@@ -296,7 +300,7 @@ public actor WindowManager {
                FrameVerification.matches(actual, actualAnchor, tolerance: tolerance) {
                 if sizeWasVerified, abs(actual.width - anchored.width) <= tolerance,
                    abs(actual.height - anchored.height) <= tolerance {
-                    return try placementResult(ideal: target, effective: actualAnchor, actual: actual,
+                    return try placementResult(original: original, ideal: target, effective: actualAnchor, actual: actual,
                                                available: display.availableFrame, tolerance: tolerance)
                 }
                 // One stable read after settling distinguishes an app-constrained
@@ -320,12 +324,12 @@ public actor WindowManager {
         })
     }
 
-    private func placementResult(ideal: CGRect, effective: CGRect, actual: CGRect,
+    private func placementResult(original: CGRect, ideal: CGRect, effective: CGRect, actual: CGRect,
                                  available: CGRect, tolerance: CGFloat) throws -> PlacementResult {
         guard actual.width <= available.width + tolerance, actual.height <= available.height + tolerance else {
             throw PlacementError.windowLargerThanDisplay
         }
-        return PlacementResult(idealFrame: ideal, requestedFrame: effective, actualFrame: actual,
+        return PlacementResult(originalFrame: original, idealFrame: ideal, requestedFrame: effective, actualFrame: actual,
                                isSizeConstrained: abs(actual.width - ideal.width) > tolerance
                                   || abs(actual.height - ideal.height) > tolerance)
     }
